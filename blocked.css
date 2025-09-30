@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: #f8fafc;
+  background: #0b1120;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0b1120;
+  color: inherit;
+  padding: 32px 24px;
+}
+
+main {
+  max-width: 460px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.card {
+  background: #15253b;
+  border-radius: 20px;
+  padding: 36px 32px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 18px 40px -28px rgba(8, 47, 73, 0.6);
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.domain {
+  margin: 0 0 12px;
+  font-weight: 600;
+  font-size: 18px;
+  color: rgba(241, 245, 249, 0.92);
+}
+
+.message {
+  margin: 0 0 26px;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+button {
+  font: inherit;
+  border-radius: 999px;
+  padding: 12px 20px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+button:hover {
+  filter: brightness(1.05);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+button.primary {
+  border: none;
+  background: #38bdf8;
+  color: #02101d;
+}
+
+button.ghost {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: inherit;
+}
+
+footer .muted {
+  margin: 0;
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  body {
+    padding: 24px 18px;
+  }
+
+  .card {
+    padding: 28px 22px;
+  }
+}

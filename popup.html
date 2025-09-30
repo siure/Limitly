@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Time Limit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Time limit</h1>
+        <p class="subtitle">Add sites you want to cap and review tracked limits using the tabs below.</p>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Time limit sections">
+        <button type="button" class="tab active" role="tab" aria-selected="true" aria-controls="tab-panel-add" data-tab="add">Add site</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-panel-tracked" data-tab="tracked">Tracked sites</button>
+      </nav>
+
+      <section aria-labelledby="add-site-heading" class="card tab-panel" id="tab-panel-add" data-tab-panel="add">
+        <h2 id="add-site-heading">Add a site</h2>
+        <form id="addSiteForm">
+          <label class="field">
+            <span>Website</span>
+            <div class="field-inline">
+              <input id="domainInput" type="text" name="domain" autocomplete="off" placeholder="example.com" required />
+              <button type="button" id="useCurrentButton" class="ghost compact">Use current</button>
+            </div>
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>Time limit (minutes)</span>
+              <input id="limitInput" type="number" name="limit" min="1" step="1" value="30" required inputmode="numeric" />
+            </label>
+            <label class="field">
+              <span>Period</span>
+              <select id="periodSelect" name="period">
+                <option value="daily">Per day</option>
+                <option value="weekly">Per week</option>
+              </select>
+            </label>
+          </div>
+          <div class="field">
+            <span>Active between</span>
+            <div class="window-slider">
+              <div id="windowLabel" class="window-label" aria-live="polite">All day</div>
+              <div class="slider-inputs">
+                <input id="windowStart" type="range" min="0" max="1440" step="15" value="0" aria-label="Start time" />
+                <input id="windowEnd" type="range" min="0" max="1440" step="15" value="1440" aria-label="End time" />
+              </div>
+            </div>
+            <p class="field-hint">Tracking normally happens within this window; check the box below to invert it.</p>
+          </div>
+          <label class="field checkbox">
+            <input type="checkbox" id="windowInvert" />
+            <span>Track outside the selected window</span>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="primary" id="submitButton">Save</button>
+            <button type="button" class="ghost" id="cancelEditButton" hidden>Cancel edit</button>
+          </div>
+        </form>
+        <p id="formError" class="form-error" role="alert" hidden></p>
+      </section>
+
+      <section aria-labelledby="tracked-sites-heading" class="card tab-panel" id="tab-panel-tracked" data-tab-panel="tracked" hidden>
+        <div class="card-header">
+          <h2 id="tracked-sites-heading">Tracked sites</h2>
+          <button id="refreshButton" type="button" class="icon-button" title="Refresh list">⟳</button>
+        </div>
+        <div id="emptyState" class="empty" hidden>No tracked sites yet. Add one to start limiting time.</div>
+        <ul id="sitesList" class="sites"></ul>
+      </section>
+    </main>
+
+    <template id="siteItemTemplate">
+      <li class="site-item">
+        <div class="site-main">
+          <div class="site-header">
+            <div class="site-domain"></div>
+            <label class="switch">
+              <input type="checkbox" class="js-enabled" />
+              <span class="switch-handle" aria-hidden="true"></span>
+              <span class="sr-only">Toggle site</span>
+            </label>
+          </div>
+          <div class="site-meta"></div>
+        </div>
+        <div class="site-actions">
+          <button type="button" class="ghost js-edit">Edit</button>
+          <button type="button" class="ghost js-reset">Reset</button>
+          <button type="button" class="danger js-remove">Remove</button>
+        </div>
+      </li>
+    </template>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

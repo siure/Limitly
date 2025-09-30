@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Time Limit Reached</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="blocked.css" />
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <h1>Time's up</h1>
+        <p id="blockedDomain" class="domain"></p>
+        <p id="blockedMessage" class="message"></p>
+        <div class="actions">
+          <button id="openSettings" class="primary">Adjust limits</button>
+          <button id="newTab" class="ghost">Go somewhere else</button>
+        </div>
+      </div>
+      <footer>
+        <p class="muted">You've reached the configured limit for this site. We'll automatically lift the block once the next period starts.</p>
+      </footer>
+    </main>
+    <script type="module" src="blocked.js"></script>
+  </body>
+</html>
