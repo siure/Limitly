@@ -1,6 +1,6 @@
-# Time Limit Website Blocker
+# Limitly
 
-A Chrome extension that keeps distracting sites in check. Add the domains you want to manage, choose a daily or weekly allowance, and the extension will block access automatically once you hit the limit.
+Limitly is a Chrome extension that keeps distracting sites in check. Add the domains you want to manage, choose a daily or weekly allowance, and the extension will block access automatically once you hit the limit.
 
 ## Features
 
@@ -51,9 +51,8 @@ A Chrome extension that keeps distracting sites in check. Add the domains you wa
 
 ## Troubleshooting
 
-- **Extension doesn't appear in toolbar:** Click the puzzle icon and pin "Time Limit Website Blocker".
+- **Extension doesn't appear in toolbar:** Click the puzzle icon and pin "Limitly".
 - **Nothing happens on a site:** Ensure the domain matches (use the base domain) and the popup shows the entry with remaining time.
 - **Want to allow a site again sooner?** Use the *Reset* button in the popup.
 
 Pull requests and suggestions are welcome!
-# Limitly

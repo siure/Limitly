@@ -16,6 +16,11 @@
   --window-end: 100%;
 }
 
+:root,
+html {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -23,14 +28,20 @@
 body,
 body.dark-mode {
   margin: 0;
-  padding: 0;
+  min-height: 100%;
   min-width: 420px;
-  width: 420px;
+  width: min(100%, 480px);
   background: var(--bg);
   color: var(--text);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 12px;
 }
 
 main {
+  width: min(100%, 460px);
+  margin: 0 auto;
   padding: 20px 18px 22px;
   display: flex;
   flex-direction: column;
@@ -42,6 +53,7 @@ header {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 4px;
+  text-align: center;
 }
 
 h1 {
@@ -511,5 +523,63 @@ button.danger {
 
   .site-actions button {
     width: auto;
+  }
+}
+
+@media (min-width: 720px) {
+  body,
+  body.dark-mode {
+    padding: 48px 32px 64px;
+    width: 100%;
+  }
+
+  main {
+    width: min(680px, 100%);
+    padding: 28px 32px 32px;
+    gap: 24px;
+  }
+
+  header {
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+  }
+
+  .tabs {
+    align-self: center;
+    max-width: 420px;
+    width: 100%;
+  }
+
+  .card {
+    padding: 24px 28px;
+  }
+
+  .field-row {
+    gap: 18px;
+  }
+
+  .sites {
+    gap: 16px;
+  }
+
+  .site-item {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .site-main {
+    flex: 1 1 auto;
+  }
+
+  .site-actions {
+    align-self: stretch;
+    flex-direction: column;
+    gap: 10px;
+    justify-content: flex-start;
+  }
+
+  .site-actions button {
+    width: 120px;
   }
 }
