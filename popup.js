@@ -3,6 +3,8 @@ const emptyStateEl = document.getElementById("emptyState");
 const addSiteForm = document.getElementById("addSiteForm");
 const domainInput = document.getElementById("domainInput");
 const limitInput = document.getElementById("limitInput");
+const limitFieldsEl = document.getElementById("limitFields");
+const unlimitedInput = document.getElementById("unlimitedInput");
 const periodSelect = document.getElementById("periodSelect");
 const formErrorEl = document.getElementById("formError");
 const refreshButton = document.getElementById("refreshButton");
@@ -25,10 +27,19 @@ const statsTopListEl = document.getElementById("statsTopSites");
 const statsTopEmptyEl = document.getElementById("statsTopEmpty");
 const statsTrendSvg = document.getElementById("statsTrend");
 const statsTrendEmptyEl = document.getElementById("statsTrendEmpty");
+const openFullscreenButton = document.getElementById("openFullscreenButton");
+const statsTopToggleButton = document.getElementById("statsTopToggle");
 
 document.body.classList.add("dark-mode");
 
+const searchParams = new URLSearchParams(window.location.search);
+const isFullPage = searchParams.get("view") === "full";
+if (isFullPage) {
+  document.body.classList.add("full-page");
+}
+
 const MINUTES_PER_DAY = 24 * 60;
+const DEFAULT_TOP_SITES_LIMIT = 3;
 
 const PERIOD_LABEL = {
   daily: "day",
@@ -40,6 +51,7 @@ let cachedSites = [];
 let cachedStats = null;
 let statsLoaded = false;
 let statsLoading = false;
+let topSitesExpanded = false;
 
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => activateTab(tab.dataset.tab));
@@ -52,6 +64,19 @@ if (windowStartInput && windowEndInput) {
 
 if (windowInvertInput) {
   windowInvertInput.addEventListener("change", updateWindowLabel);
+}
+
+if (unlimitedInput) {
+  unlimitedInput.addEventListener("change", () => {
+    const isUnlimited = unlimitedInput.checked;
+    if (limitFieldsEl) {
+      limitFieldsEl.style.opacity = isUnlimited ? "0.5" : "1";
+      limitFieldsEl.style.pointerEvents = isUnlimited ? "none" : "auto";
+    }
+    if (limitInput) {
+      limitInput.required = !isUnlimited;
+    }
+  });
 }
 
 if (useCurrentButton) {
@@ -87,6 +112,23 @@ if (tabsContainer) {
     if (nextTab) {
       nextTab.focus();
       activateTab(nextTab.dataset.tab);
+    }
+  });
+}
+
+if (openFullscreenButton) {
+  if (isFullPage) {
+    openFullscreenButton.hidden = true;
+  } else {
+    openFullscreenButton.addEventListener("click", handleOpenFullView);
+  }
+}
+
+if (statsTopToggleButton) {
+  statsTopToggleButton.addEventListener("click", () => {
+    topSitesExpanded = !topSitesExpanded;
+    if (cachedStats) {
+      renderStats(cachedStats);
     }
   });
 }
@@ -180,14 +222,15 @@ function renderSites(sites) {
     .forEach((site) => {
       const node = siteTemplate.content.firstElementChild.cloneNode(true);
       node.dataset.siteId = site.id;
-      node.classList.toggle("blocked", site.remainingSeconds <= 0 && site.enabled);
+      const isUnlimited = !Number.isFinite(site.remainingSeconds);
+      node.classList.toggle("blocked", !isUnlimited && site.remainingSeconds <= 0 && site.enabled);
       node.classList.toggle("disabled", !site.enabled);
 
       const domainEl = node.querySelector(".site-domain");
       const metaEl = node.querySelector(".site-meta");
       const toggleInput = node.querySelector(".js-enabled");
       domainEl.textContent = site.domain;
-  domainEl.title = site.domain;
+      domainEl.title = site.domain;
       metaEl.textContent = buildMetaText(site);
       if (toggleInput) {
         toggleInput.checked = !!site.enabled;
@@ -209,6 +252,7 @@ function renderStats(data) {
   if (!statsTotalEl) return;
   try {
     const todaySeconds = Math.max(0, Math.round(Number(data?.todaySeconds ?? 0)));
+    const trackedSeconds = Math.max(0, Math.round(Number(data?.trackedSeconds ?? data?.todaySeconds ?? 0)));
     const sessionCount = Math.max(0, Math.round(Number(data?.sessionCount ?? 0)));
     const avgSessionSeconds = Math.max(0, Math.round(Number(data?.avgSessionSeconds ?? 0)));
 
@@ -221,7 +265,8 @@ function renderStats(data) {
     }
 
     const topSites = Array.isArray(data?.topSites) ? data.topSites : [];
-    renderTopSites(topSites, todaySeconds);
+    updateTopSitesToggle(topSites);
+    renderTopSites(topSites, trackedSeconds);
 
     const trend = Array.isArray(data?.trend) ? data.trend : [];
     renderSparkline(trend);
@@ -230,23 +275,28 @@ function renderStats(data) {
   }
 }
 
-function renderTopSites(list, todaySeconds) {
+function renderTopSites(list, trackedSeconds) {
   if (!statsTopListEl || !statsTopEmptyEl) return;
   statsTopListEl.innerHTML = "";
 
   if (!list.length) {
     statsTopEmptyEl.hidden = false;
     statsTopListEl.hidden = true;
+    if (statsTopToggleButton) {
+      statsTopToggleButton.hidden = true;
+    }
     return;
   }
 
   statsTopEmptyEl.hidden = true;
   statsTopListEl.hidden = false;
-  const maxSeconds = Math.max(...list.map((item) => Math.max(0, item.seconds ?? 0)), 1);
+  const items = topSitesExpanded ? list : list.slice(0, DEFAULT_TOP_SITES_LIMIT);
+  const maxSeconds = Math.max(...items.map((item) => Math.max(0, item.seconds ?? 0)), 1);
 
-  list.forEach((item) => {
+  items.forEach((item) => {
     const seconds = Math.max(0, Math.round(item.seconds ?? 0));
-    const share = todaySeconds > 0 ? Math.round((seconds / todaySeconds) * 100) : 0;
+    const shareRatio = typeof item.share === "number" ? item.share : (trackedSeconds > 0 ? seconds / trackedSeconds : 0);
+    const share = Math.min(100, Math.max(0, Math.round(shareRatio * 100)));
     const percent = Math.max(6, Math.round((seconds / maxSeconds) * 100));
 
     const li = document.createElement("li");
@@ -278,9 +328,34 @@ function renderTopSites(list, todaySeconds) {
     bar.appendChild(fill);
 
     li.appendChild(row);
+    const sessionCount = Math.max(0, Math.round(item.sessionCount ?? 0));
+    const avgSessionSeconds = Math.max(0, Math.round(item.avgSessionSeconds ?? 0));
+    if (sessionCount > 0) {
+      const submeta = document.createElement("div");
+      submeta.className = "stats-top-submeta";
+      const sessionLabel = sessionCount === 1 ? "session" : "sessions";
+      const avgText = avgSessionSeconds > 0
+        ? formatDuration(avgSessionSeconds, { includeSeconds: avgSessionSeconds < 60 })
+        : "0m";
+      submeta.textContent = `${sessionCount} ${sessionLabel} · avg ${avgText}`;
+      li.appendChild(submeta);
+    }
     li.appendChild(bar);
     statsTopListEl.appendChild(li);
   });
+}
+
+function updateTopSitesToggle(list) {
+  if (!statsTopToggleButton) return;
+  const sites = Array.isArray(list) ? list : [];
+  const hasMore = sites.length > DEFAULT_TOP_SITES_LIMIT;
+  if (!hasMore) {
+    topSitesExpanded = false;
+  }
+  statsTopToggleButton.hidden = !hasMore;
+  statsTopToggleButton.textContent = topSitesExpanded ? "Show less" : "Show more";
+  statsTopToggleButton.setAttribute("aria-expanded", topSitesExpanded ? "true" : "false");
+  statsTopToggleButton.title = topSitesExpanded ? "Collapse top sites" : "Show more top sites";
 }
 
 function renderSparkline(trend) {
@@ -363,9 +438,16 @@ function buildMetaText(site) {
   const nextReset = site.nextReset ? formatRelativeTime(site.nextReset) : "soon";
   const windowRange = formatWindowRange(site.windowStartMinutes, site.windowEndMinutes);
   const windowPhrase = site.invertWindow ? `outside ${windowRange}` : `within ${windowRange}`;
+  const isUnlimited = limitMinutes === 0 || !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0;
 
   if (!site.enabled) {
-    return `Disabled · active ${windowPhrase}`;
+    return isUnlimited
+      ? `Disabled (stats only) · active ${windowPhrase}`
+      : `Disabled · active ${windowPhrase}`;
+  }
+
+  if (isUnlimited) {
+    return `Stats only (${periodLabel}) · ${usedMinutes} min used · active ${windowPhrase} · resets ${nextReset}`;
   }
 
   if (remaining <= 0) {
@@ -449,6 +531,14 @@ function formatDuration(secondsInput, { fallback = "0s", includeSeconds = false 
   return fallback;
 }
 
+function handleOpenFullView() {
+  const url = chrome.runtime.getURL("popup.html?view=full");
+  chrome.tabs.create({ url });
+  if (!isFullPage && typeof window.close === "function") {
+    window.close();
+  }
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms || 0)));
 }
@@ -463,9 +553,10 @@ addSiteForm.addEventListener("submit", async (event) => {
 
   try {
     const isEditing = Boolean(editingSiteId);
+    const isUnlimited = Boolean(unlimitedInput?.checked);
     const payload = {
       domain: domainInput.value,
-      limitMinutes: Number(limitInput.value),
+      limitMinutes: isUnlimited ? 0 : Number(limitInput.value),
       period: periodSelect.value,
       windowStart: clampMinutes(windowStartInput?.value ?? 0),
       windowEnd: clampMinutes(windowEndInput?.value ?? MINUTES_PER_DAY),
@@ -667,7 +758,16 @@ function enterEditMode(site) {
   submitButton.textContent = "Update";
   cancelEditButton.hidden = false;
   domainInput.value = site.domain;
-  limitInput.value = String(site.limitMinutes);
+  const isUnlimited = site.limitMinutes === 0 || !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0;
+  if (unlimitedInput) {
+    unlimitedInput.checked = isUnlimited;
+    if (limitFieldsEl) {
+      limitFieldsEl.style.opacity = isUnlimited ? "0.5" : "1";
+      limitFieldsEl.style.pointerEvents = isUnlimited ? "none" : "auto";
+    }
+  }
+  limitInput.value = isUnlimited ? "30" : String(site.limitMinutes);
+  limitInput.required = !isUnlimited;
   periodSelect.value = site.period;
   if (windowStartInput && windowEndInput) {
     windowStartInput.value = String(site.windowStartMinutes ?? 0);
@@ -695,7 +795,15 @@ function exitEditMode({ resetForm = false } = {}) {
 function resetFormAfterSubmit(preferredPeriod) {
   hideFormError();
   limitInput.value = "30";
+  limitInput.required = true;
   periodSelect.value = preferredPeriod ?? "daily";
+  if (unlimitedInput) {
+    unlimitedInput.checked = false;
+  }
+  if (limitFieldsEl) {
+    limitFieldsEl.style.opacity = "1";
+    limitFieldsEl.style.pointerEvents = "auto";
+  }
   if (windowStartInput && windowEndInput) {
     windowStartInput.value = String(0);
     windowEndInput.value = String(MINUTES_PER_DAY);

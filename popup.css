@@ -39,6 +39,14 @@ body.dark-mode {
   padding: 24px 12px;
 }
 
+body.full-page,
+body.full-page.dark-mode {
+  min-width: 100%;
+  width: 100%;
+  padding: 48px 0;
+  align-items: flex-start;
+}
+
 main {
   width: min(100%, 460px);
   margin: 0 auto;
@@ -48,13 +56,24 @@ main {
   gap: 16px;
 }
 
+body.full-page main {
+  width: min(960px, calc(100% - 64px));
+}
+
 header {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .logo {
@@ -77,6 +96,17 @@ h1 {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+.header-open {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 8px 12px;
+}
+
+body.full-page .header-open {
+  display: none;
 }
 
 .tabs {
@@ -262,6 +292,18 @@ h1 {
 .stats-top-meta {
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.stats-top-submeta {
+  color: var(--text-muted);
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.stats-top-toggle {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
 }
 
 .stats-top-bar {

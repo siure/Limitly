@@ -11,6 +11,7 @@ const FULL_DAY_MINUTES = MINUTES_PER_DAY;
 const READ_STATE_DEFAULTS = {
   sites: {},
   session: null,
+  focus: null,
   metrics: null
 };
 
@@ -29,6 +30,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const now = Date.now();
   let siteToBlock = null;
   const { state } = await mutateState((state) => {
+    accrueFocus(state, now, { finalize: false });
     const reached = accrueSession(state, now, { finalize: false });
     if (reached) {
       siteToBlock = reached;
@@ -71,9 +73,13 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const now = Date.now();
   const { state } = await mutateState((state) => {
+    if (state.focus?.tabId === tabId) {
+      accrueFocus(state, now, { finalize: true });
+    }
     if (state.session?.tabId === tabId) {
-      accrueSession(state, Date.now(), { finalize: true });
+      accrueSession(state, now, { finalize: true });
     }
   });
   await refreshBadge(state);
@@ -152,6 +158,7 @@ async function initializeBadge() {
 async function finalizeActiveSession() {
   const now = Date.now();
   const { state } = await mutateState((state) => {
+    accrueFocus(state, now, { finalize: true });
     const reached = accrueSession(state, now, { finalize: true });
     if (reached) {
       state.__blockedSiteId = reached;
@@ -177,15 +184,20 @@ async function setActiveContext(tabId, url, windowId) {
   const now = Date.now();
   let siteToBlock = null;
   const { state } = await mutateState((state) => {
+    accrueFocus(state, now, { finalize: true });
+
     const reached = accrueSession(state, now, { finalize: true });
     if (reached) {
       siteToBlock = reached;
     }
 
     if (!host) {
+      state.focus = null;
       state.session = null;
       return;
     }
+
+    startFocus(state, { tabId, windowId, url, host }, now);
 
     const site = findSiteForHost(state.sites, host);
     if (!site) {
@@ -205,7 +217,8 @@ async function setActiveContext(tabId, url, windowId) {
       return;
     }
 
-    if (site.usageSeconds >= site.limitSeconds) {
+    const isUnlimited = !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0 || site.limitMinutes === 0;
+    if (!isUnlimited && site.usageSeconds >= site.limitSeconds) {
       site.lastBlockedAt = now;
       siteToBlock = site.id;
       state.session = null;
@@ -254,6 +267,7 @@ async function handleGetStats() {
 
   const metrics = state.metrics ?? sanitizeMetrics();
   const todaySeconds = Math.max(0, Math.round(metrics.totalSeconds ?? 0));
+  const trackedSeconds = Math.max(0, Math.round(metrics.trackedSeconds ?? (metrics.totalSeconds ?? 0)));
   const sessionCount = Math.max(0, Math.round(metrics.sessionCount ?? 0));
   const totalSessionSeconds = Math.max(0, Math.round(metrics.totalSessionSeconds ?? 0));
   const avgSessionSeconds = sessionCount > 0 ? Math.round(totalSessionSeconds / sessionCount) : 0;
@@ -261,13 +275,17 @@ async function handleGetStats() {
   const topSitesRaw = Object.values(metrics.siteTotals ?? {}).map((entry) => ({
     siteId: entry.siteId,
     domain: entry.domain,
-    seconds: Math.max(0, Math.round(entry.seconds ?? 0))
+    seconds: Math.max(0, Math.round(entry.seconds ?? 0)),
+    sessionCount: Math.max(0, Math.round(entry.sessionCount ?? 0)),
+    totalSessionSeconds: Math.max(0, Math.round(entry.totalSessionSeconds ?? 0))
   }));
 
   topSitesRaw.sort((a, b) => b.seconds - a.seconds);
-  const topSites = topSitesRaw.slice(0, 3).map((entry) => ({
+  const topSites = topSitesRaw.map((entry, index) => ({
     ...entry,
-    share: todaySeconds > 0 ? entry.seconds / todaySeconds : 0
+    rank: index + 1,
+    avgSessionSeconds: entry.sessionCount > 0 ? Math.round(entry.totalSessionSeconds / entry.sessionCount) : 0,
+    share: (trackedSeconds > 0 ? entry.seconds / trackedSeconds : (todaySeconds > 0 ? entry.seconds / todaySeconds : 0))
   }));
 
   const history = Array.isArray(metrics.history)
@@ -290,6 +308,7 @@ async function handleGetStats() {
 
   return {
     todaySeconds,
+    trackedSeconds,
     sessionCount,
     avgSessionSeconds,
     topSites,
@@ -388,7 +407,8 @@ async function handleUpdateSite(payload) {
       state.session = null;
     }
 
-    if (site.usageSeconds >= site.limitSeconds) {
+    const isUnlimited = !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0 || site.limitMinutes === 0;
+    if (!isUnlimited && site.usageSeconds >= site.limitSeconds) {
       site.lastBlockedAt = now;
     }
 
@@ -476,6 +496,48 @@ async function enforceBlock(site) {
   await chrome.action.setBadgeText({ text: "STOP" });
 }
 
+function startFocus(state, context, now) {
+  if (!state) return;
+  const tabId = Number(context?.tabId);
+  if (!Number.isFinite(tabId)) {
+    state.focus = null;
+    return;
+  }
+  const windowId = Number.isFinite(Number(context?.windowId)) ? Number(context.windowId) : chrome.windows.WINDOW_ID_CURRENT;
+  state.focus = {
+    tabId,
+    windowId,
+    url: typeof context?.url === "string" ? context.url : "",
+    host: typeof context?.host === "string" ? context.host : "",
+    lastTick: now,
+    startedAt: now,
+    accumulatedSeconds: 0
+  };
+}
+
+function accrueFocus(state, now, { finalize = false } = {}) {
+  const focus = state?.focus;
+  if (!focus) return;
+
+  const lastTick = Number.isFinite(Number(focus.lastTick)) ? Number(focus.lastTick) : now;
+  let deltaMs = now - lastTick;
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+    deltaMs = 0;
+  }
+
+  const deltaSeconds = Math.floor(deltaMs / 1000);
+  if (deltaSeconds > 0) {
+    focus.accumulatedSeconds = Math.max(0, (Number(focus.accumulatedSeconds) || 0) + deltaSeconds);
+    recordFocus(state, deltaSeconds, now);
+  }
+
+  focus.lastTick = now;
+
+  if (finalize) {
+    state.focus = null;
+  }
+}
+
 function accrueSession(state, now, { finalize = false } = {}) {
   const session = state.session;
   if (!session) return null;
@@ -491,7 +553,7 @@ function accrueSession(state, now, { finalize = false } = {}) {
 
   if (!site.enabled || !isWithinActiveWindow(site, now)) {
     if (finalize && session.accumulatedSeconds > 0) {
-      recordSession(state, session.accumulatedSeconds, now);
+      recordSession(state, session, now);
     }
     state.session = null;
     return null;
@@ -513,14 +575,15 @@ function accrueSession(state, now, { finalize = false } = {}) {
 
   session.lastTick = now;
 
-  const reachedLimit = site.usageSeconds >= site.limitSeconds;
+  const isUnlimited = !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0 || site.limitMinutes === 0;
+  const reachedLimit = !isUnlimited && site.usageSeconds >= site.limitSeconds;
   if (reachedLimit) {
     site.lastBlockedAt = now;
   }
 
   if (finalize || reachedLimit) {
     if (session.accumulatedSeconds > 0) {
-      recordSession(state, session.accumulatedSeconds, now);
+      recordSession(state, session, now);
     }
     state.session = null;
   }
@@ -542,15 +605,17 @@ function normalizeAddPayload(payload) {
   const period = payload?.period === "weekly" ? "weekly" : "daily";
 
   const limitInput = Number(payload?.limitMinutes ?? payload?.limit ?? 0);
-  if (!Number.isFinite(limitInput) || limitInput <= 0) {
-    throw new Error("Time limit must be a positive number of minutes.");
+  const isUnlimited = limitInput === 0;
+  
+  if (!isUnlimited && (!Number.isFinite(limitInput) || limitInput <= 0)) {
+    throw new Error("Time limit must be a positive number of minutes or 0 for unlimited tracking.");
   }
 
   const windowStartRaw = payload?.windowStart ?? payload?.windowStartMinutes ?? 0;
   const windowEndRaw = payload?.windowEnd ?? payload?.windowEndMinutes ?? FULL_DAY_MINUTES;
   const windowBounds = normalizeWindowBounds(windowStartRaw, windowEndRaw);
-  const limitMinutes = Math.max(1, limitInput);
-  const limitSeconds = Math.max(60, Math.round(limitMinutes * 60));
+  const limitMinutes = isUnlimited ? 0 : Math.max(1, limitInput);
+  const limitSeconds = isUnlimited ? Infinity : Math.max(60, Math.round(limitMinutes * 60));
   const invertWindow = Boolean(payload?.invertWindow);
 
   return {
@@ -568,13 +633,14 @@ function formatSite(site) {
   const normalized = applySiteDefaults({ ...site });
   const limitSeconds = normalized.limitSeconds;
   const usageSeconds = normalized.usageSeconds ?? 0;
-  const remainingSeconds = Math.max(0, limitSeconds - usageSeconds);
+  const isUnlimited = !Number.isFinite(limitSeconds) || limitSeconds === 0 || normalized.limitMinutes === 0;
+  const remainingSeconds = isUnlimited ? Infinity : Math.max(0, limitSeconds - usageSeconds);
   return {
     id: normalized.id,
     domain: normalized.domain,
     period: normalized.period,
     limitMinutes: normalized.limitMinutes,
-    limitSeconds,
+    limitSeconds: isUnlimited ? Infinity : limitSeconds,
     usageSeconds,
     remainingSeconds,
     periodStart: normalized.periodStart,
@@ -606,6 +672,13 @@ async function refreshBadge(stateOverride) {
 
   if (!site.enabled || !isWithinActiveWindow(site)) {
     await chrome.action.setBadgeText({ text: "" });
+    return;
+  }
+
+  const isUnlimited = !Number.isFinite(site.limitSeconds) || site.limitSeconds === 0 || site.limitMinutes === 0;
+  if (isUnlimited) {
+    await chrome.action.setBadgeBackgroundColor({ color: "#6366f1" });
+    await chrome.action.setBadgeText({ text: "∞" });
     return;
   }
 
@@ -722,6 +795,7 @@ function readState() {
   return chrome.storage.local.get(READ_STATE_DEFAULTS).then((data) => ({
     sites: sanitizeSites(data.sites ?? {}),
     session: sanitizeSession(data.session ?? null),
+    focus: sanitizeFocus(data.focus ?? null),
     metrics: sanitizeMetrics(data.metrics)
   }));
 }
@@ -739,18 +813,21 @@ async function mutateState(mutator) {
   const state = {
     sites: sanitizeSites(data.sites ?? {}),
     session: sanitizeSession(data.session ?? null),
+    focus: sanitizeFocus(data.focus ?? null),
     metrics: sanitizeMetrics(data.metrics)
   };
   const result = await mutator(state);
   state.sites = sanitizeSites(state.sites ?? {});
   state.metrics = sanitizeMetrics(state.metrics);
   state.session = sanitizeSession(state.session);
+  state.focus = sanitizeFocus(state.focus);
   if (state.session && !state.sites[state.session.siteId]) {
     state.session = null;
   }
   await chrome.storage.local.set({
     sites: state.sites,
     session: state.session ?? null,
+    focus: state.focus ?? null,
     metrics: state.metrics
   });
   return { state, result };
@@ -780,11 +857,38 @@ function sanitizeSession(session) {
   return sanitized;
 }
 
+function sanitizeFocus(focus) {
+  if (!focus || typeof focus !== "object") {
+    return null;
+  }
+  const tabId = Number(focus.tabId);
+  if (!Number.isFinite(tabId)) {
+    return null;
+  }
+  const sanitized = { ...focus };
+  const fallback = Date.now();
+  sanitized.tabId = tabId;
+  sanitized.windowId = Number.isFinite(Number(sanitized.windowId)) ? Number(sanitized.windowId) : chrome.windows.WINDOW_ID_CURRENT;
+  sanitized.url = typeof sanitized.url === "string" ? sanitized.url : "";
+  sanitized.host = typeof sanitized.host === "string" ? sanitized.host : "";
+  sanitized.lastTick = Number.isFinite(Number(sanitized.lastTick)) ? Number(sanitized.lastTick) : fallback;
+  sanitized.startedAt = Number.isFinite(Number(sanitized.startedAt)) ? Number(sanitized.startedAt) : sanitized.lastTick;
+  sanitized.accumulatedSeconds = Math.max(0, Number(sanitized.accumulatedSeconds) || 0);
+  if (!isTrackableUrl(sanitized.url)) {
+    return null;
+  }
+  return sanitized;
+}
+
 function sanitizeMetrics(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
+  const legacyTotal = Number(source.totalSeconds);
+  const focusSeconds = Number(source.focusSeconds);
+  const trackedSeconds = Number(source.trackedSeconds);
   const metrics = {
     dayKey: typeof source.dayKey === "string" ? source.dayKey : null,
-    totalSeconds: Math.max(0, Number(source.totalSeconds) || 0),
+    totalSeconds: Math.max(0, Number.isFinite(focusSeconds) ? focusSeconds : (Number.isFinite(legacyTotal) ? legacyTotal : 0)),
+    trackedSeconds: Math.max(0, Number.isFinite(trackedSeconds) ? trackedSeconds : (Number.isFinite(legacyTotal) ? legacyTotal : 0)),
     sessionCount: Math.max(0, Number(source.sessionCount) || 0),
     totalSessionSeconds: Math.max(0, Number(source.totalSessionSeconds) || 0),
     siteTotals: {},
@@ -796,10 +900,14 @@ function sanitizeMetrics(raw) {
       if (!value || typeof value !== "object") continue;
       const seconds = Math.max(0, Number(value.seconds) || 0);
       const domain = typeof value.domain === "string" ? value.domain : String(value.domain ?? siteId);
+      const sessionCount = Math.max(0, Number(value.sessionCount) || 0);
+      const totalSessionSeconds = Math.max(0, Number(value.totalSessionSeconds) || 0);
       metrics.siteTotals[siteId] = {
         siteId,
         domain,
-        seconds
+        seconds,
+        sessionCount,
+        totalSessionSeconds
       };
     }
   }
@@ -849,31 +957,56 @@ function archiveMetrics(metrics, newDayKey) {
   }
   metrics.dayKey = newDayKey;
   metrics.totalSeconds = 0;
+  metrics.trackedSeconds = 0;
   metrics.sessionCount = 0;
   metrics.totalSessionSeconds = 0;
   metrics.siteTotals = {};
 }
 
-function recordUsage(state, site, deltaSeconds, now = Date.now()) {
+function recordFocus(state, deltaSeconds, now = Date.now()) {
   if (!deltaSeconds || deltaSeconds <= 0) return;
   const metrics = ensureMetrics(state, now);
   metrics.totalSeconds = Math.max(0, (metrics.totalSeconds ?? 0) + deltaSeconds);
+}
+
+function recordUsage(state, site, deltaSeconds, now = Date.now()) {
+  if (!deltaSeconds || deltaSeconds <= 0) return;
+  const metrics = ensureMetrics(state, now);
+  metrics.trackedSeconds = Math.max(0, (metrics.trackedSeconds ?? 0) + deltaSeconds);
   if (!site?.id) return;
   const current = metrics.siteTotals[site.id] ?? {
     siteId: site.id,
     domain: site.domain,
-    seconds: 0
+    seconds: 0,
+    sessionCount: 0,
+    totalSessionSeconds: 0
   };
   current.seconds = Math.max(0, (current.seconds ?? 0) + deltaSeconds);
   current.domain = site.domain ?? current.domain;
   metrics.siteTotals[site.id] = current;
 }
 
-function recordSession(state, sessionSeconds, now = Date.now()) {
-  if (!sessionSeconds || sessionSeconds <= 0) return;
+function recordSession(state, session, now = Date.now()) {
+  if (!session || typeof session !== "object") return;
+  const sessionSeconds = Math.max(0, Number(session.accumulatedSeconds) || 0);
+  if (!sessionSeconds) return;
   const metrics = ensureMetrics(state, now);
   metrics.sessionCount = Math.max(0, (metrics.sessionCount ?? 0) + 1);
   metrics.totalSessionSeconds = Math.max(0, (metrics.totalSessionSeconds ?? 0) + sessionSeconds);
+  const siteId = session.siteId;
+  if (!siteId) return;
+  const site = state.sites?.[siteId];
+  const current = metrics.siteTotals[siteId] ?? {
+    siteId,
+    domain: site?.domain ?? String(siteId),
+    seconds: 0,
+    sessionCount: 0,
+    totalSessionSeconds: 0
+  };
+  current.sessionCount = Math.max(0, (current.sessionCount ?? 0) + 1);
+  current.totalSessionSeconds = Math.max(0, (current.totalSessionSeconds ?? 0) + sessionSeconds);
+  current.domain = site?.domain ?? current.domain;
+  metrics.siteTotals[siteId] = current;
 }
 
 function applySiteDefaults(site) {
