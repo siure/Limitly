@@ -10,7 +10,8 @@ const FULL_DAY_MINUTES = MINUTES_PER_DAY;
 
 const READ_STATE_DEFAULTS = {
   sites: {},
-  session: null
+  session: null,
+  metrics: null
 };
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -117,6 +118,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: true, data: result });
           break;
         }
+        case "getStats": {
+          const payload = await handleGetStats();
+          sendResponse({ success: true, data: payload });
+          break;
+        }
         default:
           sendResponse({ success: false, error: "Unknown message." });
       }
@@ -211,7 +217,9 @@ async function setActiveContext(tabId, url, windowId) {
       tabId,
       windowId,
       host,
-      lastTick: now
+      lastTick: now,
+      startedAt: now,
+      accumulatedSeconds: 0
     };
   });
 
@@ -235,6 +243,57 @@ async function handleGetSites() {
   return {
     session: state.session,
     sites: Object.values(state.sites).map((site) => formatSite(site))
+  };
+}
+
+async function handleGetStats() {
+  const now = Date.now();
+  const { state } = await mutateState((state) => {
+    ensureMetrics(state, now);
+  });
+
+  const metrics = state.metrics ?? sanitizeMetrics();
+  const todaySeconds = Math.max(0, Math.round(metrics.totalSeconds ?? 0));
+  const sessionCount = Math.max(0, Math.round(metrics.sessionCount ?? 0));
+  const totalSessionSeconds = Math.max(0, Math.round(metrics.totalSessionSeconds ?? 0));
+  const avgSessionSeconds = sessionCount > 0 ? Math.round(totalSessionSeconds / sessionCount) : 0;
+
+  const topSitesRaw = Object.values(metrics.siteTotals ?? {}).map((entry) => ({
+    siteId: entry.siteId,
+    domain: entry.domain,
+    seconds: Math.max(0, Math.round(entry.seconds ?? 0))
+  }));
+
+  topSitesRaw.sort((a, b) => b.seconds - a.seconds);
+  const topSites = topSitesRaw.slice(0, 3).map((entry) => ({
+    ...entry,
+    share: todaySeconds > 0 ? entry.seconds / todaySeconds : 0
+  }));
+
+  const history = Array.isArray(metrics.history)
+    ? metrics.history.filter((entry) => entry && typeof entry.dayKey === "string")
+    : [];
+
+  const combinedTrend = [...history, { dayKey: metrics.dayKey, totalSeconds: todaySeconds }];
+  const trendMap = new Map();
+  for (const entry of combinedTrend) {
+    if (!entry || typeof entry !== "object") continue;
+    const dayKey = typeof entry.dayKey === "string" ? entry.dayKey : null;
+    if (!dayKey) continue;
+    const totalSeconds = Math.max(0, Math.round(entry.totalSeconds ?? 0));
+    trendMap.set(dayKey, { dayKey, totalSeconds });
+  }
+
+  const trend = Array.from(trendMap.values())
+    .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+    .slice(-7);
+
+  return {
+    todaySeconds,
+    sessionCount,
+    avgSessionSeconds,
+    topSites,
+    trend
   };
 }
 
@@ -333,6 +392,11 @@ async function handleUpdateSite(payload) {
       site.lastBlockedAt = now;
     }
 
+    const metrics = ensureMetrics(state, now);
+    if (metrics.siteTotals?.[siteId]) {
+      metrics.siteTotals[siteId].domain = domain;
+    }
+
     updatedSite = formatSite(site);
   });
 
@@ -423,7 +487,12 @@ function accrueSession(state, now, { finalize = false } = {}) {
 
   ensurePeriod(site, now);
 
+  session.accumulatedSeconds = Math.max(0, Number(session.accumulatedSeconds) || 0);
+
   if (!site.enabled || !isWithinActiveWindow(site, now)) {
+    if (finalize && session.accumulatedSeconds > 0) {
+      recordSession(state, session.accumulatedSeconds, now);
+    }
     state.session = null;
     return null;
   }
@@ -438,6 +507,8 @@ function accrueSession(state, now, { finalize = false } = {}) {
   if (deltaSeconds > 0) {
     site.usageSeconds = Math.max(0, (site.usageSeconds ?? 0) + deltaSeconds);
     site.lastUpdated = now;
+    session.accumulatedSeconds += deltaSeconds;
+    recordUsage(state, site, deltaSeconds, now);
   }
 
   session.lastTick = now;
@@ -448,6 +519,9 @@ function accrueSession(state, now, { finalize = false } = {}) {
   }
 
   if (finalize || reachedLimit) {
+    if (session.accumulatedSeconds > 0) {
+      recordSession(state, session.accumulatedSeconds, now);
+    }
     state.session = null;
   }
 
@@ -647,7 +721,8 @@ function createUrlPatterns(domain) {
 function readState() {
   return chrome.storage.local.get(READ_STATE_DEFAULTS).then((data) => ({
     sites: sanitizeSites(data.sites ?? {}),
-    session: data.session ?? null
+    session: sanitizeSession(data.session ?? null),
+    metrics: sanitizeMetrics(data.metrics)
   }));
 }
 
@@ -663,16 +738,20 @@ async function mutateState(mutator) {
   const data = await chrome.storage.local.get(READ_STATE_DEFAULTS);
   const state = {
     sites: sanitizeSites(data.sites ?? {}),
-    session: data.session ?? null
+    session: sanitizeSession(data.session ?? null),
+    metrics: sanitizeMetrics(data.metrics)
   };
   const result = await mutator(state);
   state.sites = sanitizeSites(state.sites ?? {});
+  state.metrics = sanitizeMetrics(state.metrics);
+  state.session = sanitizeSession(state.session);
   if (state.session && !state.sites[state.session.siteId]) {
     state.session = null;
   }
   await chrome.storage.local.set({
     sites: state.sites,
-    session: state.session ?? null
+    session: state.session ?? null,
+    metrics: state.metrics
   });
   return { state, result };
 }
@@ -684,6 +763,117 @@ function sanitizeSites(record) {
     result[id] = applySiteDefaults({ ...raw });
   }
   return result;
+}
+
+function sanitizeSession(session) {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+  if (!session.siteId) {
+    return null;
+  }
+  const sanitized = { ...session };
+  const fallback = Date.now();
+  sanitized.lastTick = Number.isFinite(Number(sanitized.lastTick)) ? Number(sanitized.lastTick) : fallback;
+  sanitized.startedAt = Number.isFinite(Number(sanitized.startedAt)) ? Number(sanitized.startedAt) : sanitized.lastTick;
+  sanitized.accumulatedSeconds = Math.max(0, Number(sanitized.accumulatedSeconds) || 0);
+  return sanitized;
+}
+
+function sanitizeMetrics(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const metrics = {
+    dayKey: typeof source.dayKey === "string" ? source.dayKey : null,
+    totalSeconds: Math.max(0, Number(source.totalSeconds) || 0),
+    sessionCount: Math.max(0, Number(source.sessionCount) || 0),
+    totalSessionSeconds: Math.max(0, Number(source.totalSessionSeconds) || 0),
+    siteTotals: {},
+    history: []
+  };
+
+  if (source.siteTotals && typeof source.siteTotals === "object") {
+    for (const [siteId, value] of Object.entries(source.siteTotals)) {
+      if (!value || typeof value !== "object") continue;
+      const seconds = Math.max(0, Number(value.seconds) || 0);
+      const domain = typeof value.domain === "string" ? value.domain : String(value.domain ?? siteId);
+      metrics.siteTotals[siteId] = {
+        siteId,
+        domain,
+        seconds
+      };
+    }
+  }
+
+  if (Array.isArray(source.history)) {
+    const byDay = new Map();
+    for (const entry of source.history) {
+      if (!entry || typeof entry !== "object") continue;
+      const dayKey = typeof entry.dayKey === "string" ? entry.dayKey : null;
+      if (!dayKey) continue;
+      const totalSeconds = Math.max(0, Number(entry.totalSeconds) || 0);
+      byDay.set(dayKey, { dayKey, totalSeconds });
+    }
+    metrics.history = Array.from(byDay.values()).sort((a, b) => a.dayKey.localeCompare(b.dayKey)).slice(-7);
+  }
+
+  if (!metrics.dayKey) {
+    metrics.dayKey = getDayKey();
+  }
+
+  return metrics;
+}
+
+function ensureMetrics(state, now = Date.now()) {
+  state.metrics = sanitizeMetrics(state.metrics);
+  const metrics = state.metrics;
+  const dayKey = getDayKey(now);
+  if (metrics.dayKey !== dayKey) {
+    archiveMetrics(metrics, dayKey);
+  }
+  return metrics;
+}
+
+function archiveMetrics(metrics, newDayKey) {
+  if (!metrics) return;
+  const history = Array.isArray(metrics.history) ? [...metrics.history] : [];
+  if (metrics.dayKey) {
+    const entry = {
+      dayKey: metrics.dayKey,
+      totalSeconds: Math.max(0, Math.round(metrics.totalSeconds ?? 0))
+    };
+    const byDay = new Map(history.map((item) => [item.dayKey, item]));
+    byDay.set(entry.dayKey, entry);
+    metrics.history = Array.from(byDay.values()).sort((a, b) => a.dayKey.localeCompare(b.dayKey)).slice(-7);
+  } else {
+    metrics.history = history.slice(-7);
+  }
+  metrics.dayKey = newDayKey;
+  metrics.totalSeconds = 0;
+  metrics.sessionCount = 0;
+  metrics.totalSessionSeconds = 0;
+  metrics.siteTotals = {};
+}
+
+function recordUsage(state, site, deltaSeconds, now = Date.now()) {
+  if (!deltaSeconds || deltaSeconds <= 0) return;
+  const metrics = ensureMetrics(state, now);
+  metrics.totalSeconds = Math.max(0, (metrics.totalSeconds ?? 0) + deltaSeconds);
+  if (!site?.id) return;
+  const current = metrics.siteTotals[site.id] ?? {
+    siteId: site.id,
+    domain: site.domain,
+    seconds: 0
+  };
+  current.seconds = Math.max(0, (current.seconds ?? 0) + deltaSeconds);
+  current.domain = site.domain ?? current.domain;
+  metrics.siteTotals[site.id] = current;
+}
+
+function recordSession(state, sessionSeconds, now = Date.now()) {
+  if (!sessionSeconds || sessionSeconds <= 0) return;
+  const metrics = ensureMetrics(state, now);
+  metrics.sessionCount = Math.max(0, (metrics.sessionCount ?? 0) + 1);
+  metrics.totalSessionSeconds = Math.max(0, (metrics.totalSessionSeconds ?? 0) + sessionSeconds);
 }
 
 function applySiteDefaults(site) {
@@ -705,6 +895,17 @@ function applySiteDefaults(site) {
   site.windowStartMinutes = windowBounds.start;
   site.windowEndMinutes = windowBounds.end;
   return site;
+}
+
+function getDayKey(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeWindowBounds(start, end) {

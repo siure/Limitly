@@ -18,6 +18,13 @@ const windowInvertInput = document.getElementById("windowInvert");
 const useCurrentButton = document.getElementById("useCurrentButton");
 const submitButton = document.getElementById("submitButton");
 const cancelEditButton = document.getElementById("cancelEditButton");
+const statsTotalEl = document.getElementById("statsTotal");
+const statsSessionCountEl = document.getElementById("statsSessionCount");
+const statsAvgSessionEl = document.getElementById("statsAvgSession");
+const statsTopListEl = document.getElementById("statsTopSites");
+const statsTopEmptyEl = document.getElementById("statsTopEmpty");
+const statsTrendSvg = document.getElementById("statsTrend");
+const statsTrendEmptyEl = document.getElementById("statsTrendEmpty");
 
 document.body.classList.add("dark-mode");
 
@@ -30,6 +37,9 @@ const PERIOD_LABEL = {
 
 let editingSiteId = null;
 let cachedSites = [];
+let cachedStats = null;
+let statsLoaded = false;
+let statsLoading = false;
 
 tabs.forEach((tab) => {
   tab.addEventListener("click", () => activateTab(tab.dataset.tab));
@@ -81,12 +91,26 @@ if (tabsContainer) {
   });
 }
 
-async function sendMessage(message) {
-  const response = await chrome.runtime.sendMessage(message);
-  if (!response?.success) {
-    throw new Error(response?.error ?? "Extension did not respond.");
+async function sendMessage(message, { retries = 1 } = {}) {
+  try {
+    const response = await chrome.runtime.sendMessage(message);
+    if (!response?.success) {
+      const error = response?.error ?? "Extension did not respond.";
+      if (error.includes("Unknown message") && message?.type) {
+        throw new Error(`${error} (type: ${message.type}). Did you reload the extension after recent code changes? Visit chrome://extensions and click reload.`);
+      }
+      throw new Error(error);
+    }
+    return response.data;
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    const transient = /Could not establish connection|Receiving end does not exist|The message port closed/i.test(messageText);
+    if (retries > 0 && transient) {
+      await delay(150);
+      return sendMessage(message, { retries: retries - 1 });
+    }
+    throw error;
   }
-  return response.data;
 }
 
 async function refreshSites() {
@@ -94,8 +118,49 @@ async function refreshSites() {
     const data = await sendMessage({ type: "getSites" });
     cachedSites = Array.isArray(data?.sites) ? data.sites : [];
     renderSites(cachedSites);
+    if (statsLoaded) {
+      await refreshStats({ force: true });
+    }
   } catch (error) {
     showFormError(error.message);
+  }
+}
+
+async function refreshStats({ force = false } = {}) {
+  if (!statsTotalEl) {
+    console.warn("Stats elements not found in DOM");
+    return;
+  }
+  if (statsLoading) {
+    console.log("Stats already loading, skipping");
+    return;
+  }
+  if (!force && statsLoaded && cachedStats) {
+    renderStats(cachedStats);
+    return;
+  }
+  statsLoading = true;
+  try {
+    const data = await sendMessage({ type: "getStats" });
+    if (!data || typeof data !== "object") {
+      throw new Error("Invalid stats response format");
+    }
+    cachedStats = data;
+    statsLoaded = true;
+    renderStats(cachedStats);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("Failed to load stats:", error);
+    
+    if (errorMsg.includes("Unknown message")) {
+      alert("⚠️ EXTENSION NOT RELOADED ⚠️\n\nThe Stats feature requires reloading the extension:\n\n1. Open chrome://extensions\n2. Find 'Limitly'\n3. Click the ↻ RELOAD button\n4. Close and reopen this popup\n\nThe 'getStats' handler exists in your code but Chrome is still running the old version.");
+    }
+    
+    statsLoaded = false;
+    cachedStats = null;
+    renderStats(null);
+  } finally {
+    statsLoading = false;
   }
 }
 
@@ -138,6 +203,156 @@ function renderSites(sites) {
   if (editingSiteId && !sites.some((site) => site.id === editingSiteId)) {
     exitEditMode({ resetForm: true });
   }
+}
+
+function renderStats(data) {
+  if (!statsTotalEl) return;
+  try {
+    const todaySeconds = Math.max(0, Math.round(Number(data?.todaySeconds ?? 0)));
+    const sessionCount = Math.max(0, Math.round(Number(data?.sessionCount ?? 0)));
+    const avgSessionSeconds = Math.max(0, Math.round(Number(data?.avgSessionSeconds ?? 0)));
+
+    statsTotalEl.textContent = formatDuration(todaySeconds, { fallback: "0m" });
+    if (statsSessionCountEl) {
+      statsSessionCountEl.textContent = String(sessionCount);
+    }
+    if (statsAvgSessionEl) {
+      statsAvgSessionEl.textContent = avgSessionSeconds > 0 ? formatDuration(avgSessionSeconds, { includeSeconds: avgSessionSeconds < 60 }) : "0m";
+    }
+
+    const topSites = Array.isArray(data?.topSites) ? data.topSites : [];
+    renderTopSites(topSites, todaySeconds);
+
+    const trend = Array.isArray(data?.trend) ? data.trend : [];
+    renderSparkline(trend);
+  } catch (error) {
+    console.error("Failed to render stats", data, error);
+  }
+}
+
+function renderTopSites(list, todaySeconds) {
+  if (!statsTopListEl || !statsTopEmptyEl) return;
+  statsTopListEl.innerHTML = "";
+
+  if (!list.length) {
+    statsTopEmptyEl.hidden = false;
+    statsTopListEl.hidden = true;
+    return;
+  }
+
+  statsTopEmptyEl.hidden = true;
+  statsTopListEl.hidden = false;
+  const maxSeconds = Math.max(...list.map((item) => Math.max(0, item.seconds ?? 0)), 1);
+
+  list.forEach((item) => {
+    const seconds = Math.max(0, Math.round(item.seconds ?? 0));
+    const share = todaySeconds > 0 ? Math.round((seconds / todaySeconds) * 100) : 0;
+    const percent = Math.max(6, Math.round((seconds / maxSeconds) * 100));
+
+    const li = document.createElement("li");
+    li.className = "stats-top-item";
+
+    const row = document.createElement("div");
+    row.className = "stats-top-row";
+
+    const domain = document.createElement("span");
+    domain.className = "stats-top-domain";
+    domain.textContent = item.domain ?? "Site";
+
+    const meta = document.createElement("span");
+    meta.className = "stats-top-meta";
+    const formattedDuration = formatDuration(seconds, { fallback: "0m" });
+    const parts = [formattedDuration];
+    if (share > 0) {
+      parts.push(`${share}%`);
+    }
+    meta.textContent = parts.join(" · ");
+
+    row.appendChild(domain);
+    row.appendChild(meta);
+
+    const bar = document.createElement("div");
+    bar.className = "stats-top-bar";
+    const fill = document.createElement("span");
+    fill.style.width = `${Math.min(100, percent)}%`;
+    bar.appendChild(fill);
+
+    li.appendChild(row);
+    li.appendChild(bar);
+    statsTopListEl.appendChild(li);
+  });
+}
+
+function renderSparkline(trend) {
+  if (!statsTrendSvg || !statsTrendEmptyEl) return;
+  statsTrendSvg.innerHTML = "";
+
+  if (!trend.length) {
+    statsTrendEmptyEl.hidden = false;
+    statsTrendSvg.hidden = true;
+    statsTrendSvg.setAttribute("aria-hidden", "true");
+    return;
+  }
+
+  statsTrendEmptyEl.hidden = true;
+  statsTrendSvg.hidden = false;
+  statsTrendSvg.setAttribute("aria-hidden", "false");
+
+  const ordered = [...trend].sort((a, b) => String(a.dayKey).localeCompare(String(b.dayKey)));
+
+  const width = 140;
+  const height = 48;
+  const topPadding = 6;
+  const bottomPadding = 6;
+  const chartHeight = height - topPadding - bottomPadding;
+
+  const values = ordered.map((item) => Math.max(0, Math.round(item.totalSeconds ?? 0)));
+  const maxValue = Math.max(...values, 1);
+
+  const step = ordered.length > 1 ? width / (ordered.length - 1) : 0;
+  const points = ordered.map((item, index) => {
+    const x = ordered.length > 1 ? index * step : width / 2;
+    const ratio = (Math.max(0, Math.round(item.totalSeconds ?? 0)) / maxValue) || 0;
+    const y = topPadding + (chartHeight - chartHeight * ratio);
+    return { x, y };
+  });
+
+  let coords = points;
+  if (points.length === 1) {
+    const single = points[0];
+    coords = [
+      { x: 0, y: single.y },
+      { x: width, y: single.y }
+    ];
+  }
+
+  const ns = "http://www.w3.org/2000/svg";
+
+  const areaPath = document.createElementNS(ns, "path");
+  let d = `M ${coords[0].x} ${height - bottomPadding}`;
+  coords.forEach((point) => {
+    d += ` L ${point.x} ${point.y}`;
+  });
+  d += ` L ${coords[coords.length - 1].x} ${height - bottomPadding} Z`;
+  areaPath.setAttribute("d", d);
+  areaPath.setAttribute("fill", "rgba(56, 189, 248, 0.18)");
+  areaPath.setAttribute("stroke", "none");
+
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", "var(--accent)");
+  line.setAttribute("stroke-width", "2");
+  line.setAttribute("points", coords.map((point) => `${point.x},${point.y}`).join(" "));
+
+  statsTrendSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  statsTrendSvg.setAttribute("preserveAspectRatio", "none");
+  statsTrendSvg.setAttribute(
+    "aria-label",
+    `Daily usage from ${ordered[0].dayKey} to ${ordered[ordered.length - 1].dayKey}`
+  );
+
+  statsTrendSvg.appendChild(areaPath);
+  statsTrendSvg.appendChild(line);
 }
 
 function buildMetaText(site) {
@@ -205,6 +420,37 @@ function formatMinutesToTime(mins) {
   const minutes = mins % 60;
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(hours)}:${pad(minutes)}`;
+}
+
+function formatDuration(secondsInput, { fallback = "0s", includeSeconds = false } = {}) {
+  const totalSeconds = Math.max(0, Math.round(Number(secondsInput) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    if (minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${hours}h`;
+  }
+
+  if (minutes > 0) {
+    if (includeSeconds && seconds > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${minutes}m`;
+  }
+
+  if (seconds > 0) {
+    return `${seconds}s`;
+  }
+
+  return fallback;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms || 0)));
 }
 
 addSiteForm.addEventListener("submit", async (event) => {
@@ -341,9 +587,16 @@ function activateTab(tabName) {
 
   if (tabName === "tracked") {
     refreshSites();
+  } else if (tabName === "stats") {
+    refreshStats({ force: true });
   } else {
     hideFormError();
   }
+}
+
+function isTabActive(tabName) {
+  const activeTab = tabs.find((tab) => tab.classList.contains("active"));
+  return activeTab?.dataset.tab === tabName;
 }
 
 (async function bootstrap() {
@@ -351,6 +604,11 @@ function activateTab(tabName) {
     await refreshSites();
   } catch (error) {
     showFormError(error.message);
+  }
+  try {
+    await refreshStats();
+  } catch (error) {
+    console.warn("Stats bootstrap failed", error);
   }
 })();
 

@@ -9,12 +9,14 @@
   <body>
     <main>
       <header>
-  <h1>Limitly</h1>
+        <img src="icon128.png" alt="Limitly logo" class="logo" />
+        <h1>Limitly</h1>
       </header>
 
-  <nav class="tabs" role="tablist" aria-label="Limitly sections">
+      <nav class="tabs" role="tablist" aria-label="Limitly sections">
         <button type="button" class="tab active" role="tab" aria-selected="true" aria-controls="tab-panel-add" data-tab="add">Add site</button>
         <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-panel-tracked" data-tab="tracked">Tracked sites</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-panel-stats" data-tab="stats">Stats</button>
       </nav>
 
       <section aria-labelledby="add-site-heading" class="card tab-panel" id="tab-panel-add" data-tab-panel="add">
@@ -70,6 +72,42 @@
         </div>
         <div id="emptyState" class="empty" hidden>No tracked sites yet. Add one to start limiting time.</div>
         <ul id="sitesList" class="sites"></ul>
+      </section>
+
+      <section aria-labelledby="stats-heading" class="card tab-panel stats-panel" id="tab-panel-stats" data-tab-panel="stats" hidden>
+        <div class="stats-summary">
+          <div>
+            <h2 id="stats-heading">Today</h2>
+            <p class="stats-label">Today's total time</p>
+          </div>
+          <div class="stats-total-value" id="statsTotal" aria-live="polite">0m</div>
+        </div>
+        <div class="stats-meta">
+          <div>
+            <p class="stats-label">Sessions</p>
+            <p class="stats-value" id="statsSessionCount">0</p>
+          </div>
+          <div>
+            <p class="stats-label">Avg session</p>
+            <p class="stats-value" id="statsAvgSession">0m</p>
+          </div>
+        </div>
+        <div class="stats-top">
+          <div class="stats-section-header">
+            <h3>Top sites</h3>
+          </div>
+          <ul id="statsTopSites" class="stats-top-list"></ul>
+          <p id="statsTopEmpty" class="stats-empty" hidden>No activity yet today.</p>
+        </div>
+        <div class="stats-trend">
+          <div class="stats-section-header">
+            <h3>7-day trend</h3>
+          </div>
+          <div class="sparkline-wrapper">
+            <svg id="statsTrend" class="sparkline" viewBox="0 0 140 48" preserveAspectRatio="none" role="img" aria-label="Usage in the last 7 days"></svg>
+          </div>
+          <p id="statsTrendEmpty" class="stats-empty" hidden>No data for the last week.</p>
+        </div>
       </section>
     </main>
 
