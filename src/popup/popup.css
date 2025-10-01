@@ -4,12 +4,12 @@
   --bg: #14120b;
   --surface: #1b1913;
   --surface-alt: #26241e;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --border: rgba(141, 141, 141, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.137);
   --text: #edecec;
   --text-muted: rgba(243, 243, 243, 0.65);
   --accent: #e84e00;
-  --accent-soft: rgba(86, 156, 214, 0.18);
+  --accent-soft: rgba(255, 255, 255, 0.08);
   --danger: #fa3434;
   --danger-soft: rgba(244, 135, 113, 0.16);
   --window-start: 0%;
