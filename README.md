@@ -5,8 +5,8 @@ Limitly is a Chrome extension that keeps distracting sites in check. Add the dom
 ## Features
 
 - ✏️ Configure any website with a per-day or per-week cap (minutes).
-- � Track time without limits—enable "stats only" mode to monitor usage without blocking.
-- �🕒 Limit tracking to a daily time window with a dual-handle slider.
+- 📈 Track time without limits—enable "stats only" mode to monitor usage without blocking.
+- 🕒 Limit tracking to a daily time window with a dual-handle slider.
 - 🌗 Invert the window to count time outside of quiet hours when you need the reverse.
 - ⏱ Tracks active time on the site while the tab is focused.
 - ⚡ One-click "Use current" button and inline editing keep site settings up to date.
@@ -30,12 +30,11 @@ Limitly is a Chrome extension that keeps distracting sites in check. Add the dom
 1. Click the extension icon to open the popup.
 2. Need extra space? Hit **Open full view** in the header to pop the UI into its own tab.
 3. Enter a domain (or hit **Use current**), choose a time limit in minutes, pick *per day* or *per week*, and drag the handles to set the daily tracking window.
-4. Want to track time without enforcing a limit? Check **Track without limiting (stats only)** to monitor usage without blocking—perfect for awareness without restrictions.
-5. Select **Track outside the selected window** if you want the limit to apply everywhere except the highlighted range.
-6. Toggle a tracked site on/off at any time without deleting it, or use **Edit** to adjust its settings later.
-7. Flip to the **Stats** tab for a quick pulse on today's focused time across the browser, session behavior, per-site averages, and your 7-day trend. Tap **Show more** to expand the top-sites list when you need the full breakdown.
-8. When you browse, the extension keeps track of active time in focused tabs during the configured window. Once the limit is used up, every matching tab is redirected to the block page.
-9. Time spent resets automatically at the start of the next period. You can manually reset or remove a site from the popup if needed.
+4. Select **Track outside the selected window** if you want the limit to apply everywhere except the highlighted range.
+5. Toggle a tracked site on/off at any time without deleting it, or use **Edit** to adjust its settings later.
+6. Flip to the **Stats** tab for a quick pulse on today's focused time across the browser, session behavior, per-site averages, and your 7-day trend. Tap the reload icon to grab the latest numbers, and hit **Show more** when you need the full top-sites breakdown.
+7. When you browse, the extension keeps track of active time in focused tabs during the configured window. Once the limit is used up, every matching tab is redirected to the block page.
+8. Time spent resets automatically at the start of the next period. You can manually reset or remove a site from the popup if needed.
 
 > **Tip:** Add the base domain (like `reddit.com`) to cover common subdomains such as `www.reddit.com` or `old.reddit.com`.
 
@@ -49,14 +48,14 @@ Limitly is a Chrome extension that keeps distracting sites in check. Add the dom
 
 ## Folder overview
 
-| File | Purpose |
+| Path | Purpose |
 | --- | --- |
 | `manifest.json` | Chrome extension manifest (MV3). |
-| `background.js` | Service worker tracking usage, enforcing limits, and handling popup requests. |
-| `popup.html / popup.js / popup.css` | Popup UI to manage sites and limits. |
-| `blocked.html / blocked.js / blocked.css` | Page shown when a limit is reached. |
-| `logo.png` | Original extension logo (hourglass icon). |
-| `icon16.png / icon48.png / icon128.png` | Resized icons for Chrome extension display. |
+| `src/background/background.js` | Service worker tracking usage, enforcing limits, and handling popup requests. |
+| `src/popup/` | Popup experience (`popup.html`, `popup.js`, `popup.css`). |
+| `src/blocked/` | Friendly block page shown when a limit is reached. |
+| `assets/icons/` | Icon set used throughout the extension (toolbar/action icons). |
+| `assets/branding/logo.png` | Original extension logo (hourglass icon). |
 | `README.md` | You're reading it. |
 
 ## Troubleshooting

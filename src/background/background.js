@@ -487,7 +487,7 @@ async function enforceBlock(site) {
   if (!site.enabled) return;
   if (!isWithinActiveWindow(site)) return;
   const patterns = createUrlPatterns(site.domain);
-  const blockUrl = chrome.runtime.getURL(`blocked.html?siteId=${encodeURIComponent(site.id)}`);
+  const blockUrl = chrome.runtime.getURL(`src/blocked/blocked.html?siteId=${encodeURIComponent(site.id)}`);
   const tabs = await chrome.tabs.query({ url: patterns });
   await Promise.all(
     tabs.map((tab) => chrome.tabs.update(tab.id, { url: blockUrl }))

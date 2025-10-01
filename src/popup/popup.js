@@ -29,6 +29,7 @@ const statsTrendSvg = document.getElementById("statsTrend");
 const statsTrendEmptyEl = document.getElementById("statsTrendEmpty");
 const openFullscreenButton = document.getElementById("openFullscreenButton");
 const statsTopToggleButton = document.getElementById("statsTopToggle");
+const statsRefreshButton = document.getElementById("statsRefreshButton");
 
 document.body.classList.add("dark-mode");
 
@@ -45,6 +46,17 @@ const PERIOD_LABEL = {
   daily: "day",
   weekly: "week"
 };
+
+function filterTopSites(list) {
+  return (Array.isArray(list) ? list : []).filter((item) => {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+    const seconds = Math.max(0, Number(item.seconds ?? 0));
+    const sessionCount = Math.max(0, Number(item.sessionCount ?? 0));
+    return seconds > 0 || sessionCount > 0;
+  });
+}
 
 let editingSiteId = null;
 let cachedSites = [];
@@ -133,6 +145,10 @@ if (statsTopToggleButton) {
   });
 }
 
+if (statsRefreshButton) {
+  statsRefreshButton.addEventListener("click", handleStatsRefreshClick);
+}
+
 async function sendMessage(message, { retries = 1 } = {}) {
   try {
     const response = await chrome.runtime.sendMessage(message);
@@ -206,6 +222,16 @@ async function refreshStats({ force = false } = {}) {
   }
 }
 
+async function handleStatsRefreshClick() {
+  if (!statsRefreshButton) return;
+  statsRefreshButton.disabled = true;
+  try {
+    await refreshStats({ force: true });
+  } finally {
+    statsRefreshButton.disabled = false;
+  }
+}
+
 function renderSites(sites) {
   sitesListEl.innerHTML = "";
 
@@ -264,9 +290,9 @@ function renderStats(data) {
       statsAvgSessionEl.textContent = avgSessionSeconds > 0 ? formatDuration(avgSessionSeconds, { includeSeconds: avgSessionSeconds < 60 }) : "0m";
     }
 
-    const topSites = Array.isArray(data?.topSites) ? data.topSites : [];
-    updateTopSitesToggle(topSites);
-    renderTopSites(topSites, trackedSeconds);
+  const topSites = filterTopSites(data?.topSites);
+  updateTopSitesToggle(topSites);
+  renderTopSites(topSites, trackedSeconds);
 
     const trend = Array.isArray(data?.trend) ? data.trend : [];
     renderSparkline(trend);
@@ -279,7 +305,9 @@ function renderTopSites(list, trackedSeconds) {
   if (!statsTopListEl || !statsTopEmptyEl) return;
   statsTopListEl.innerHTML = "";
 
-  if (!list.length) {
+  const sites = Array.isArray(list) ? list : [];
+
+  if (!sites.length) {
     statsTopEmptyEl.hidden = false;
     statsTopListEl.hidden = true;
     if (statsTopToggleButton) {
@@ -290,7 +318,7 @@ function renderTopSites(list, trackedSeconds) {
 
   statsTopEmptyEl.hidden = true;
   statsTopListEl.hidden = false;
-  const items = topSitesExpanded ? list : list.slice(0, DEFAULT_TOP_SITES_LIMIT);
+  const items = topSitesExpanded ? sites : sites.slice(0, DEFAULT_TOP_SITES_LIMIT);
   const maxSeconds = Math.max(...items.map((item) => Math.max(0, item.seconds ?? 0)), 1);
 
   items.forEach((item) => {
@@ -348,6 +376,14 @@ function renderTopSites(list, trackedSeconds) {
 function updateTopSitesToggle(list) {
   if (!statsTopToggleButton) return;
   const sites = Array.isArray(list) ? list : [];
+  if (!sites.length) {
+    topSitesExpanded = false;
+    statsTopToggleButton.hidden = true;
+    statsTopToggleButton.textContent = "Show more";
+    statsTopToggleButton.setAttribute("aria-expanded", "false");
+    statsTopToggleButton.title = "Show more top sites";
+    return;
+  }
   const hasMore = sites.length > DEFAULT_TOP_SITES_LIMIT;
   if (!hasMore) {
     topSitesExpanded = false;
@@ -532,7 +568,7 @@ function formatDuration(secondsInput, { fallback = "0s", includeSeconds = false 
 }
 
 function handleOpenFullView() {
-  const url = chrome.runtime.getURL("popup.html?view=full");
+  const url = chrome.runtime.getURL("src/popup/popup.html?view=full");
   chrome.tabs.create({ url });
   if (!isFullPage && typeof window.close === "function") {
     window.close();

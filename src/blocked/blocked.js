@@ -21,7 +21,7 @@ const siteId = params.get("siteId");
 })();
 
 settingsBtn.addEventListener("click", () => {
-  const url = chrome.runtime.getURL("popup.html");
+  const url = chrome.runtime.getURL("src/popup/popup.html");
   chrome.tabs.create({ url });
 });
 

@@ -10,7 +10,7 @@
     <main>
       <header>
         <div class="header-brand">
-          <img src="icon128.png" alt="Limitly logo" class="logo" />
+          <img src="../../assets/icons/icon128.png" alt="Limitly logo" class="logo" />
           <h1>Limitly</h1>
         </div>
         <button type="button" class="ghost compact header-open" id="openFullscreenButton" title="Open in a new tab">Open full view</button>
@@ -87,7 +87,10 @@
             <h2 id="stats-heading">Today</h2>
             <p class="stats-label">Time in browser today</p>
           </div>
-          <div class="stats-total-value" id="statsTotal" aria-live="polite">0m</div>
+          <div class="stats-total-group">
+            <div class="stats-total-value" id="statsTotal" aria-live="polite">0m</div>
+            <button type="button" class="icon-button" id="statsRefreshButton" title="Reload stats">⟳</button>
+          </div>
         </div>
         <div class="stats-meta">
           <div>
