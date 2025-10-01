@@ -446,7 +446,7 @@ function renderSparkline(trend) {
   });
   d += ` L ${coords[coords.length - 1].x} ${height - bottomPadding} Z`;
   areaPath.setAttribute("d", d);
-  areaPath.setAttribute("fill", "rgba(56, 189, 248, 0.18)");
+  areaPath.setAttribute("fill", "rgba(86, 156, 214, 0.18)");
   areaPath.setAttribute("stroke", "none");
 
   const line = document.createElementNS(ns, "polyline");

@@ -1,17 +1,17 @@
 :root {
   color-scheme: dark;
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-  --bg: #0b1120;
-  --surface: #111d2f;
-  --surface-alt: #15253b;
-  --border: rgba(148, 163, 184, 0.18);
-  --border-strong: rgba(148, 163, 184, 0.35);
-  --text: #f8fafc;
-  --text-muted: rgba(148, 163, 184, 0.75);
-  --accent: #38bdf8;
-  --accent-soft: rgba(56, 189, 248, 0.16);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.16);
+  --bg: #14120b;
+  --surface: #1b1913;
+  --surface-alt: #26241e;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text: #edecec;
+  --text-muted: rgba(243, 243, 243, 0.65);
+  --accent: #e84e00;
+  --accent-soft: rgba(86, 156, 214, 0.18);
+  --danger: #fa3434;
+  --danger-soft: rgba(244, 135, 113, 0.16);
   --window-start: 0%;
   --window-end: 100%;
 }
@@ -80,7 +80,7 @@ header {
   width: 24px;
   height: 24px;
   object-fit: contain;
-  filter: drop-shadow(0 1px 4px rgba(56, 189, 248, 0.3));
+  filter: drop-shadow(0 1px 4px rgba(86, 156, 214, 0.3));
 }
 
 h1 {
@@ -190,7 +190,7 @@ body.full-page .header-open {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(248, 250, 252, 0.85);
+  color: rgba(243, 243, 243, 0.78);
 }
 
 .stats-panel {
@@ -227,7 +227,7 @@ body.full-page .header-open {
   font-size: 16px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(248, 250, 252, 0.75);
+  color: rgba(243, 243, 243, 0.68);
 }
 
 .stats-label {
@@ -326,7 +326,7 @@ body.full-page .header-open {
 .stats-top-bar {
   height: 6px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
@@ -372,7 +372,7 @@ body.full-page .header-open {
   gap: 6px;
   margin-bottom: 12px;
   font-size: 13px;
-  color: rgba(248, 250, 252, 0.82);
+  color: rgba(243, 243, 243, 0.82);
 }
 
 .field:last-of-type {
@@ -422,14 +422,14 @@ select {
 }
 
 input::placeholder {
-  color: rgba(148, 163, 184, 0.55);
+  color: rgba(243, 243, 243, 0.4);
 }
 
 input:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 0 3px rgba(86, 156, 214, 0.15);
 }
 
 button {
@@ -489,7 +489,7 @@ button.danger {
 
 .field-hint {
   margin: 4px 0 0;
-  font-size: 11px;
+  color: rgba(243, 243, 243, 0.55);
   color: var(--text-muted);
 }
 
@@ -558,7 +558,7 @@ button.danger {
   background: var(--accent);
   border: none;
   cursor: pointer;
-  box-shadow: 0 0 0 2px #02101d;
+  box-shadow: 0 0 0 2px #1e1e1e;
   pointer-events: auto;
 }
 
@@ -617,8 +617,8 @@ button.danger {
 
 .checkbox input:checked {
   border-color: var(--accent);
-  background: rgba(56, 189, 248, 0.18);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+  background: rgba(86, 156, 214, 0.18);
+  box-shadow: 0 0 0 3px rgba(86, 156, 214, 0.12);
 }
 
 .checkbox input:checked::before {
