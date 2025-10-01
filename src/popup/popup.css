@@ -5,7 +5,7 @@
   --surface: #1b1913;
   --surface-alt: #26241e;
   --border: rgba(141, 141, 141, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.137);
+  --border-strong: rgba(26, 26, 26, 0.137);
   --text: #edecec;
   --text-muted: rgba(243, 243, 243, 0.65);
   --accent: #e84e00;
@@ -80,7 +80,7 @@ header {
   width: 24px;
   height: 24px;
   object-fit: contain;
-  filter: drop-shadow(0 1px 4px rgba(86, 156, 214, 0.3));
+  filter: drop-shadow(0 1px 4px rgba(223, 110, 4, 0.3));
 }
 
 h1 {
@@ -429,7 +429,7 @@ input:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(86, 156, 214, 0.15);
+  box-shadow: 0 0 0 3px  rgba(223, 110, 4, 0.3);
 }
 
 button {
@@ -617,8 +617,8 @@ button.danger {
 
 .checkbox input:checked {
   border-color: var(--accent);
-  background: rgba(86, 156, 214, 0.18);
-  box-shadow: 0 0 0 3px rgba(86, 156, 214, 0.12);
+  background: rgba(122, 122, 122, 0.18);
+  box-shadow: 0 0 0 3px  rgba(223, 110, 4, 0.3);
 }
 
 .checkbox input:checked::before {
@@ -746,7 +746,7 @@ button.danger {
   width: 38px;
   height: 20px;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.35);
+  background:  rgba(223, 110, 4, 0.3);
   position: relative;
   transition: background-color 0.15s ease;
 }
